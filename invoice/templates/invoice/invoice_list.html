@@ -1,0 +1,137 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Invoice List</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<div class="container mt-5">
+    <h2 class="mb-4">Invoices</h2>
+    {% for status, invoices in invoices_by_status.items %}
+        <h4>{{ status }} Invoices</h4>
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Customer</th>
+                    <th>Amount</th>
+                    <th>Due</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for invoice in invoices %}
+                    <tr id="invoice-{{ invoice.id }}">
+                        <td>{{ invoice.id }}</td>
+                        <td>{{ invoice.customer.name }}</td>
+                        <td>{{ invoice.total_amount }} {{ invoice.currency }}</td>
+                        <td>{{ invoice.due_amount }} {{ invoice.currency }}</td>
+                        <td>{{ invoice.status }}</td>
+                        <td>
+                            {% if invoice.status == 'UNPAID' %}
+                                <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#payModal" data-id="{{ invoice.id }}">Pay</button>
+                                {% if is_manager %}
+                                    <button class="btn btn-sm btn-danger cancel-btn" data-id="{{ invoice.id }}">Cancel</button>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">No Actions</span>
+                            {% endif %}
+                            <a href="/api/invoices/{{ invoice.id }}/pdf/" target="_blank" class="btn btn-sm btn-secondary ms-1">Download PDF</a>
+                            <button class="btn btn-sm btn-outline-success ms-1 send-email-btn" data-id="{{ invoice.id }}">Send Email</button>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endfor %}
+</div>
+
+<!-- Payment Modal -->
+<div class="modal fade" id="payModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="paymentForm" class="modal-content" method="post">
+      {% csrf_token %}
+      <div class="modal-header">
+        <h5 class="modal-title">Make Payment</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="invoiceId" name="invoice_id">
+        <div class="mb-3">
+            <label for="amount" class="form-label">Amount</label>
+            <input type="number" class="form-control" id="paymentAmount" name="amount" required>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-success">Submit Payment</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Scripts -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+$(document).ready(function () {
+    $('#payModal').on('show.bs.modal', function (event) {
+        var button = $(event.relatedTarget);
+        var invoiceId = button.data('id');
+        $('#invoiceId').val(invoiceId);
+    });
+
+    $('#paymentForm').on('submit', function (e) {
+        e.preventDefault();
+        var invoiceId = $('#invoiceId').val();
+        var amount = $('#paymentAmount').val();
+        $.ajax({
+            url: `/api/invoices/${invoiceId}/pay/`,
+            method: 'POST',
+            data: { amount: amount },
+            headers: { 'X-CSRFToken': $('input[name="csrfmiddlewaretoken"]').val() },
+            success: function () {
+                location.reload();
+            },
+            error: function (xhr) {
+                alert('Payment failed: ' + xhr.responseJSON.error);
+            }
+        });
+    });
+
+    $(document).on('click', '.cancel-btn', function () {
+        var invoiceId = $(this).data('id');
+        if (confirm("Cancel this invoice?")) {
+            $.ajax({
+                url: `/api/invoices/${invoiceId}/cancel/`,
+                method: 'POST',
+                headers: { 'X-CSRFToken': $('input[name="csrfmiddlewaretoken"]').val() },
+                success: function () {
+                    location.reload();
+                },
+                error: function (xhr) {
+                    alert('Cancel failed: ' + xhr.responseJSON.error);
+                }
+            });
+        }
+    });
+});
+
+$(document).on('click', '.send-email-btn', function () {
+    const invoiceId = $(this).data('id');
+    $.ajax({
+        url: `/api/invoices/${invoiceId}/send-email/`,
+        method: 'POST',
+        headers: { 'X-CSRFToken': $('input[name="csrfmiddlewaretoken"]').val() },
+        success: function () {
+            alert('Invoice email sent successfully.');
+        },
+        error: function (xhr) {
+            alert('Failed to send invoice email: ' + xhr.responseJSON.error);
+        }
+    });
+});
+</script>
+</body>
+</html>
